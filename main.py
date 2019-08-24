@@ -1,27 +1,31 @@
-import base64
-import hashlib
-import hmac
 import os
-import requests
 import sys
+import json
+from fuzzywuzzy import fuzz
+
+from gepir import GEPIR
+from gepir.elements import GetKeyLicenseeResponse, GetPrefixLicenseeResponse, GetPartyByNameResponse, GEPIRParty, PartyDataLine, GEPIRItem, ItemDataLine
 
 
+def get_party_name(gtin): 
+    gepir = GEPIR(
+        requester_gln='0000000000000'
+    )
+    
+    gklr = gepir.get_key_licensee(
+        requested_key_code='GTIN',
+        requested_key_value=gtin
+    ) # type: GetKeyLicenseeResponse
+    return gklr.gepir_party[0].party_data_line[0].gs1_company_prefix_licensee.party_name[0]
+    
+def search_list(list_type, q):
+    with open(f"{list_type}.json",'r') as json_file:
+        data = json.load(json_file)
+    return max(fuzz.ratio(q.lower(), row) for row in data)
 
-def make_auth_token(upc_code, auth_key):
-    sha_hash = hmac.new(auth_key.encode(), upc_code.encode(), hashlib.sha1)
-    return base64.b64encode(sha_hash.digest())
-
-def get_upc(upc_code, app_key, auth_key): 
-    params = {
-        'upcCode': upc_code,
-        'field_names': 'all',
-        'language': 'en',
-        'app_key': app_key,
-        'signature': make_auth_token(upc_code, auth_key)
-    }
-    return requests.get("https://www.digit-eyes.com/gtin/v2_0/", params).json()
 
 if __name__ == "__main__":
-    upc = get_upc(sys.argv[1], os.environ['app_key'], os.environ['auth_key'])
-    print(upc)
-    #print(upc['gcp']['company'])
+    party_name = get_party_name(sys.argv[1])
+    dont_match = search_list("companiesdonttest", party_name)
+    do_match = search_list("companiesdotest", party_name)
+    print(f"company={party_name} dont={dont_match} do={do_match}")
